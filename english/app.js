@@ -10,7 +10,7 @@
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const CAT_ZH = {grammar:"语法", word_choice:"用词", phrasing:"表达", zh2en:"中译英"};
-let CFG = {pass_threshold: 0.9, passes_to_master: 2};
+let CFG = {pass_threshold: 0.9, passes_to_master: 2, dialogue_silence_ms: (window.EP_CONFIG && window.EP_CONFIG.dialogue_silence_ms) || 1500};
 
 function toast(msg, ms = 2200) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), ms); }
 
@@ -79,47 +79,82 @@ const store = {
 
 /* ---------------- speech-to-text ---------------- */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const joinText = (a, b) => (a && b ? a + " " + b : a || b || "").trim();
 const speech = {
   supported: !!SR,
-  /* Robust on Android Chrome: one-shot sessions auto-restarted while "on", final text accumulated. */
-  create({lang, onText, onState}) {
-    let rec = null, on = false, finalText = "", lastErr = "";
+  /* Continuous recognition: one long session (continuous = true), no per-sentence restart, so fast speech isn't cut
+     between sentences. Chrome can still end a session on its own (silence timeout / network); while "on" we restart
+     and keep the text already recognised. maxAlternatives = 5: getTarget() (optional, drill/repeat) picks the
+     alternative that makes the text closest to the expected sentence (word-level edit distance). */
+  create({lang, onText, onState, getTarget}) {
+    let rec = null, on = false, base = "", sess = "", lastErr = "", quickEnds = 0, startedAt = 0;
     function start(seed = "") {
       if (!SR) { onState("unsupported"); return; }
-      finalText = seed ? seed.trim() + " " : ""; on = true; lastErr = ""; spawn(); onState("on");
+      base = String(seed || "").trim(); sess = ""; on = true; lastErr = ""; quickEnds = 0; spawn(); onState("on");
     }
     function spawn() {
-      rec = new SR(); rec.lang = lang; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
-      rec.onresult = (e) => {
-        let interim = "";
-        for (let i = e.resultIndex; i < e.results.length; i++) {
-          const r = e.results[i];
-          if (r.isFinal) finalText += r[0].transcript.trim() + " "; else interim += r[0].transcript;
+      const r = rec = new SR(); r.lang = lang; r.interimResults = true; r.continuous = true; r.maxAlternatives = 5;
+      startedAt = Date.now();
+      r.onresult = (e) => {
+        if (r !== rec) return;
+        const target = getTarget ? getTarget() : "";
+        let fin = "", interim = "";
+        for (let i = 0; i < e.results.length; i++) {   // rebuild from all results of this session (robust to resultIndex quirks)
+          const res = e.results[i];
+          if (res.isFinal) {
+            const alts = []; for (let k = 0; k < res.length; k++) alts.push(String(res[k].transcript || "").trim());
+            let t = alts[0] || "";
+            if (target && alts.length > 1 && window.EPDialogue) {
+              const full = EPDialogue.pickClosest(alts.map(a => joinText(joinText(base, fin), a)), target);
+              t = alts[alts.map(a => joinText(joinText(base, fin), a)).indexOf(full)] || t;
+            }
+            // Android Chrome quirk: a final result can repeat the earlier finals of the same session
+            if (fin && t.toLowerCase().startsWith(fin.toLowerCase())) t = t.slice(fin.length).trim();
+            fin = joinText(fin, t);
+          } else interim = joinText(interim, String(res[0].transcript || "").trim());
         }
-        onText(finalText.trim(), interim.trim());
+        sess = fin;
+        onText(joinText(base, sess), interim);
       };
-      rec.onerror = (e) => { lastErr = e.error; if (e.error === "not-allowed" || e.error === "service-not-allowed") { on = false; onState("denied"); } };
-      rec.onend = () => { if (on && lastErr !== "not-allowed") { try { spawn(); } catch { on = false; onState("off"); } } else onState("off"); };
-      try { rec.start(); } catch { /* already started */ }
+      r.onerror = (e) => { lastErr = e.error; if (e.error === "not-allowed" || e.error === "service-not-allowed") { on = false; onState("denied"); } };
+      r.onend = () => {
+        if (r !== rec) return;
+        base = joinText(base, sess); sess = "";
+        if (!on || lastErr === "not-allowed" || lastErr === "service-not-allowed") { if (lastErr !== "not-allowed" && lastErr !== "service-not-allowed") onState("off"); return; }
+        quickEnds = Date.now() - startedAt < 1500 ? quickEnds + 1 : 0;   // guard against a restart loop (e.g. no network)
+        if (quickEnds > 5) { on = false; onState("off"); return; }
+        lastErr = "";
+        try { spawn(); } catch { on = false; onState("off"); }
+      };
+      try { r.start(); } catch { /* already started */ }
     }
-    function stop() { on = false; try { rec && rec.stop(); } catch {} onState("off"); }
-    return {start, stop, get on() { return on; }, get text() { return finalText.trim(); }};
+    function stop() { on = false; try { rec && rec.stop(); } catch {} onState("off"); }          // keeps pending final results
+    function abort() { on = false; const r = rec; rec = null; base = joinText(base, sess); sess = ""; try { r && r.abort(); } catch {} onState("off"); } // drop late results
+    return {start, stop, abort, get on() { return on; }, get text() { return joinText(base, sess); }};
   },
 };
-function speak(text, rate = 0.92) {
-  if (!("speechSynthesis" in window)) return toast("这个浏览器不支持朗读");
+let currentUtterance = null;   // keep a reference: Chrome can garbage-collect an utterance and never fire onend
+function speak(text, rate = 0.92, onDone) {
+  if (!("speechSynthesis" in window)) { toast("这个浏览器不支持朗读"); if (onDone) setTimeout(onDone, 0); return; }
   speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text); u.lang = "en-US"; u.rate = rate;
+  const u = currentUtterance = new SpeechSynthesisUtterance(text); u.lang = "en-US"; u.rate = rate;
   const v = speechSynthesis.getVoices().find(v => /en[-_]US/i.test(v.lang)); if (v) u.voice = v;
+  if (onDone) {
+    let done = false;
+    const finish = () => { if (done) return; done = true; clearTimeout(guard); if (currentUtterance === u) currentUtterance = null; onDone(); };
+    // safety net: some Android builds never fire onend -> estimate the length (~70 ms per char at rate 1)
+    const guard = setTimeout(finish, 2500 + String(text).length * 75 / rate);
+    u.onend = finish; u.onerror = finish;
+  }
   speechSynthesis.speak(u);
 }
 
-function bindMic(btn, stateEl, lang, idleText, onText, getSeed) {
-  const r = speech.create({lang, onText, onState: (s) => {
+function bindMic(btn, stateEl, lang, idleText, onText, getSeed, getTarget) {
+  const r = speech.create({lang, onText, getTarget, onState: (s) => {
     btn.classList.toggle("on", s === "on");
     stateEl.textContent = s === "on" ? "正在听……说完点一下停止" : s === "denied" ? "麦克风被拒绝了：请在浏览器地址栏左边的🔒里允许麦克风" : s === "unsupported" ? "这个浏览器不支持语音识别，请用 Chrome 打开，或直接打字" : idleText;
   }});
-  btn.addEventListener("click", () => { if (r.on) r.stop(); else { speechSynthesis && speechSynthesis.cancel(); r.start(getSeed ? getSeed() : ""); } });
+  btn.addEventListener("click", () => { if (r.on) r.stop(); else { if (window.speechSynthesis) speechSynthesis.cancel(); if (window.__epDialogStop) window.__epDialogStop(); r.start(getSeed ? getSeed() : ""); } });
   return r;
 }
 
@@ -169,6 +204,7 @@ function showTab(name) {
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.id === "tab-" + name));
   if (name === "progress") renderProgress();
   if (name === "recap") renderRecap();
+  if (name !== "dialogue" && window.__epDialogStop) window.__epDialogStop();
   window.scrollTo(0, 0);
 }
 function showStep(id) { ["speak", "feedback", "drill", "done"].forEach(s => $("#step-" + s).classList.toggle("hidden", s !== id)); window.scrollTo(0, 0); }
@@ -212,7 +248,7 @@ function renderFeedback(res) {
   }).join("");
   $("#btn-start-drill").textContent = res.issue_count ? "开始跟读练习 →" : "直接跟读整段练流利度 →";
 }
-document.addEventListener("click", (e) => { const b = e.target.closest("[data-say]"); if (b) speak(b.dataset.say); });
+document.addEventListener("click", (e) => { const b = e.target.closest("[data-say]"); if (b && !(dlg.active && b.closest("#dlg-log"))) speak(b.dataset.say); });  // no replay while a dialogue is live (echo)
 $("#btn-back-speak").onclick = () => showStep("speak");
 
 /* ---------------- step 3: drill ---------------- */
@@ -260,7 +296,8 @@ function startDrillItem() {
 $("#btn-peek").onclick = () => { $("#drill-target").classList.remove("blur"); const it = session.queue[0]; if (it) it.peeked = true; };
 $("#btn-listen").onclick = () => session.queue[0] && speak(session.queue[0].target);
 drillMic = bindMic($("#mic-drill"), $("#mic-drill-state"), "en-US", "点我跟读",
-  (fin, interim) => { $("#drill-typed").value = (fin + (interim ? " " + interim : "")).trim(); });
+  (fin, interim) => { $("#drill-typed").value = (fin + (interim ? " " + interim : "")).trim(); },
+  null, () => (session && session.queue[0] ? session.queue[0].target : ""));   // pick the ASR alternative closest to the target
 // auto-check when the recognizer stops with text
 $("#mic-drill").addEventListener("click", () => { setTimeout(() => { if (!drillMic.on && $("#drill-typed").value.trim()) check(); }, 400); });
 $("#btn-check").onclick = check;
@@ -405,8 +442,164 @@ function renderRecap() {
 $("#btn-recap-now").onclick = async () => { const r = await generateRecap(EPRecap.isoWeek(Date.now()).key); renderRecap(); toast(`本周周报已生成（${r.source}）`); };
 $("#recap-list").addEventListener("click", async (e) => { const b = e.target.closest("[data-regen]"); if (b) { await generateRecap(b.dataset.regen); renderRecap(); toast("已生成"); } });
 
+/* ---------------- dialogue tab (💬 对话) ----------------
+   Loop: listen (continuous ASR) -> ~1.5 s with no new result = end of turn -> mic off -> AI reply (one short sentence)
+   -> read aloud (speechSynthesis) -> when TTS ends, mic re-opens automatically. Mic is never on while TTS speaks. */
+const DLG_SYSTEM = "You are a friendly English conversation partner for a Chinese adult learner who works in the semiconductor industry. " +
+  "Reply with ONE short, simple, natural English sentence (at most about 15 words) that reacts to what they said and ends with a follow-up question. " +
+  "Do not correct their grammar, no lists, no emoji. If they use Chinese words, answer in English.";
+const AIKEY = "englishPractice.ai";
+const phoneAi = () => { try { const c = JSON.parse(localStorage.getItem(AIKEY)); return c && c.apiKey ? c : null; } catch { return null; } };
+api.dialogue = async function (history) {
+  // 1) local server with an AI key (key stays on the server)
+  if (!this.useLocal() && this.server && String(this.server.engine).startsWith("ai")) {
+    try { const r = await this.post("api/dialogue", {history}); if (r && r.reply) return {reply: r.reply, source: "ai"}; }
+    catch (e) { console.warn("dialogue via server failed", e); }
+  }
+  // 2) key saved on this phone (静态版 AI 设置) -> call the OpenAI-compatible API directly
+  const pa = phoneAi();
+  if (pa) {
+    try {
+      const msgs = [{role: "system", content: DLG_SYSTEM}].concat(history.slice(-12).map(h => ({role: h.role === "user" ? "user" : "assistant", content: h.text})));
+      const r = await fetch(pa.baseUrl.replace(/\/+$/, "") + "/chat/completions", {method: "POST",
+        headers: {"Content-Type": "application/json", Authorization: "Bearer " + pa.apiKey},
+        body: JSON.stringify({model: pa.model || "gpt-4o-mini", temperature: 0.7, max_tokens: 60, messages: msgs})});
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const t = ((await r.json()).choices[0].message.content || "").trim().split(/\n/)[0];
+      if (t) return {reply: t, source: "ai"};
+    } catch (e) { console.warn("dialogue via phone key failed", e); toast("AI 回复失败，先用内置回复"); }
+  }
+  // 3) built-in reply library (works offline)
+  const last = history.length ? history[history.length - 1].text : "";
+  return {reply: EPDialogue.fallbackReply(last, history.slice(0, -1)).reply, source: "builtin"};
+};
+const dlgHasAI = () => (!api.useLocal() && api.server && String(api.server.engine).startsWith("ai")) || !!phoneAi();
+const dlg = {active: false, state: "idle", turns: [], timer: null, fin: "", interim: "", rec: null, session: null, opened: 0};
+const dlgSilenceMs = () => +(CFG.dialogue_silence_ms || (window.EP_CONFIG && window.EP_CONFIG.dialogue_silence_ms) || 1500);
+function dlgSetState(st, msg) {
+  dlg.state = st;
+  const btn = $("#dlg-mic");
+  btn.classList.toggle("on", st === "listening"); btn.classList.toggle("busy", st === "thinking" || st === "speaking");
+  btn.querySelector("span").textContent = dlg.active ? "⏹" : "💬";
+  $("#dlg-state").textContent = msg || ({idle: "点我开始对话", listening: "🎤 轮到你说……（停顿约 " + (dlgSilenceMs() / 1000) + " 秒算说完）",
+    thinking: "🤔 想一想……", speaking: "🔊 AI 在说话（说完会自动开麦）"})[st] || "";
+  $("#dlg-stop").classList.toggle("hidden", !dlg.active);
+}
+function dlgNote() {
+  const n = $("#dlg-note"); const ai = dlgHasAI();
+  n.textContent = ai ? "" : "未配置 AI 密钥，当前用内置回复（能聊日常话题；要自由对话请在下面「AI 设置」填密钥）";
+  n.classList.toggle("hidden", ai);
+}
+function dlgRender() {
+  $("#dlg-log").innerHTML = dlg.turns.map((t, i) => t.role === "user"
+    ? `<div class="bubble me"><div>${esc(t.text)}</div>${t.fix ? `<div class="fix">💡 更自然：${highlight(t.fix.corrected, t.fix.good, "good")} <button class="ghost small" data-say="${esc(t.fix.corrected)}">🔊</button></div>` : ""}</div>`
+    : `<div class="bubble ai"><div>${esc(t.text)}</div><button class="ghost small" data-say="${esc(t.text)}">🔊</button>${t.source === "builtin" ? `<span class="src">内置</span>` : ""}</div>`).join("") || `<div class="hint">还没有对话。点下面的按钮开始，AI 会先跟你打个招呼。</div>`;
+  const live = joinText(dlg.fin, dlg.interim);
+  $("#dlg-live").textContent = dlg.state === "listening" && live ? live : "";
+  const log = $("#dlg-log"); log.scrollTop = log.scrollHeight;
+}
+function dlgEnsureRec() {
+  if (dlg.rec) return dlg.rec;
+  dlg.rec = speech.create({lang: "en-US", onText: (fin, interim) => {
+    if (!dlg.active || dlg.state !== "listening") return;
+    dlg.fin = fin; dlg.interim = interim; dlgRender();
+    clearTimeout(dlg.timer);   // every result (interim or final) resets the end-of-turn timer
+    if (joinText(fin, interim)) dlg.timer = setTimeout(dlgEndTurn, dlgSilenceMs());
+  }, onState: (s) => {
+    if (s === "denied") { dlgStop(); dlgSetState("idle", "麦克风被拒绝了：请在浏览器地址栏左边的🔒里允许麦克风，或者直接打字"); }
+    else if (s === "unsupported") dlgSetState(dlg.state, "这个浏览器不支持语音识别，请用 Chrome 打开，或直接打字");
+    else if (s === "off" && dlg.active && dlg.state === "listening") dlgSetState("idle", "麦克风停了（可能没网），点按钮继续，或直接打字");
+  }});
+  return dlg.rec;
+}
+function dlgListen() {
+  if (!dlg.active) return;
+  if (!speech.supported) { dlgSetState("listening", "这个浏览器不支持语音识别，请直接打字，回车发送"); return; }
+  dlg.fin = ""; dlg.interim = ""; dlgSetState("listening"); dlgRender();
+  dlgEnsureRec().start("");
+}
+function dlgEndTurn() {
+  clearTimeout(dlg.timer);
+  const text = joinText(dlg.fin, dlg.interim);
+  if (dlg.rec) dlg.rec.abort();            // mic off before the AI speaks (no echo)
+  dlg.fin = dlg.interim = "";
+  if (text) dlgUserTurn(text);
+}
+async function dlgUserTurn(text) {
+  if (!dlg.active) dlg.active = true;
+  if (!dlg.session) dlg.session = store.newSession("dialogue", {passage: "", sentences: 0, issues: []});
+  const turn = {role: "user", text, at: Date.now()}; dlg.turns.push(turn);
+  dlgSetState("thinking"); dlgRender();
+  if ($("#dlg-correct").checked) dlgCorrect(turn);   // runs in parallel, updates the bubble when ready
+  const history = dlg.turns.filter(t => t.role === "user" || t.role === "ai").map(t => ({role: t.role, text: t.text}));
+  const r = await api.dialogue(history);
+  if (!dlg.active) return;                 // user stopped while waiting
+  dlg.turns.push({role: "ai", text: r.reply, source: r.source, at: Date.now()});
+  dlgRender(); dlgSay(r.reply);
+}
+async function dlgCorrect(turn) {
+  try {
+    const res = await api.analyze(turn.text);
+    const bad = (res.sentences || []).filter(s => s.issues && s.issues.length);
+    const sess = dlg.session;
+    if (sess) { sess.passage = joinText(sess.passage, turn.text); sess.sentences += (res.sentences || []).length; }
+    if (bad.length) {
+      turn.fix = {corrected: res.corrected_passage || bad.map(s => s.corrected).join(" "), good: bad.flatMap(s => s.issues.map(x => x.to))};
+      if (sess) sess.issues.push(...bad.flatMap(s => s.issues.map(x => ({category: x.category, label: x.label, from: x.from, to: x.to}))));
+      bad.forEach(s => s.issues.forEach(x => { store.point(x, s.corrected).seen++; }));
+    }
+    store.save(); dlgRender();
+  } catch (e) { console.warn("dialogue correction failed", e); }
+}
+function dlgSay(text) {
+  dlgSetState("speaking");
+  const tok = dlg.sayTok = (dlg.sayTok || 0) + 1;   // ignore end events of an older, cancelled utterance
+  speak(text, 0.95, () => { if (dlg.active && dlg.state === "speaking" && tok === dlg.sayTok) setTimeout(() => { if (dlg.active && dlg.state === "speaking" && tok === dlg.sayTok) dlgListen(); }, 250); });
+}
+function dlgStart() {
+  dlg.active = true; dlgNote();
+  if (window.speechSynthesis) speechSynthesis.cancel();
+  if (!dlg.turns.length) {                 // AI says hello first (also unlocks TTS on the user's tap)
+    const hi = EPDialogue.opener(dlg.opened++);
+    dlg.turns.push({role: "ai", text: hi, source: dlgHasAI() ? "ai" : "builtin", at: Date.now()}); dlgRender(); dlgSay(hi);
+  } else dlgListen();
+}
+function dlgStop() {
+  dlg.active = false; clearTimeout(dlg.timer);
+  if (dlg.rec) dlg.rec.abort();
+  if (window.speechSynthesis) speechSynthesis.cancel();
+  if (dlg.session) { dlg.session.completed = true; dlg.session.endedAt = Date.now(); store.save(); dlg.session = null; }
+  dlg.fin = dlg.interim = ""; dlgSetState("idle"); dlgRender();
+}
+window.__epDialogStop = () => { if (dlg.active) dlgStop(); };
+$("#dlg-mic").onclick = () => {
+  if (!dlg.active) return dlgStart();
+  if (dlg.state === "listening" && joinText(dlg.fin, dlg.interim)) return dlgEndTurn();   // tap = "I'm done" right away
+  dlgStop();
+};
+$("#dlg-stop").onclick = dlgStop;
+function dlgSendTyped() {
+  const v = $("#dlg-typed").value.trim(); if (!v) return;
+  $("#dlg-typed").value = ""; clearTimeout(dlg.timer); if (dlg.rec) dlg.rec.abort(); dlg.fin = dlg.interim = "";
+  dlg.active = true; dlgNote(); dlgUserTurn(v);
+}
+$("#dlg-send").onclick = dlgSendTyped;
+$("#dlg-typed").addEventListener("keydown", e => { if (e.key === "Enter") dlgSendTyped(); });
+$("#dlg-clear").onclick = () => { dlgStop(); dlg.turns = []; dlgRender(); };
+// AI 设置 (optional, stored only on this phone; used by the static build when there is no server key)
+function aiFormLoad() { const pa = phoneAi() || {}; $("#ai-base").value = pa.baseUrl || ""; $("#ai-model").value = pa.model || ""; $("#ai-key").value = "";
+  $("#ai-key").placeholder = pa.apiKey ? "已保存（重新输入可替换）" : "API 密钥（sk-…）"; }
+$("#ai-save").onclick = () => {
+  const old = phoneAi() || {};
+  const c = {baseUrl: ($("#ai-base").value.trim() || "https://api.openai.com/v1").replace(/\/+$/, ""), model: $("#ai-model").value.trim() || "gpt-4o-mini", apiKey: $("#ai-key").value.trim() || old.apiKey || ""};
+  if (!c.apiKey) return toast("请填写密钥");
+  localStorage.setItem(AIKEY, JSON.stringify(c)); aiFormLoad(); dlgNote(); toast("已保存，只存在这台手机上");
+};
+$("#ai-clear").onclick = () => { localStorage.removeItem(AIKEY); aiFormLoad(); dlgNote(); toast("已删除密钥"); };
+aiFormLoad(); dlgNote(); dlgSetState("idle"); dlgRender();
+
 /* ---------------- boot ---------------- */
-api.health().then(h => { if (h) CFG = {...CFG, pass_threshold: h.pass_threshold, passes_to_master: h.passes_to_master}; updateEngineBadge(); });
+api.health().then(h => { if (h) CFG = {...CFG, pass_threshold: h.pass_threshold, passes_to_master: h.passes_to_master, dialogue_silence_ms: h.dialogue_silence_ms || CFG.dialogue_silence_ms}; updateEngineBadge(); dlgNote(); dlgSetState(dlg.state); });
 if ("speechSynthesis" in window) speechSynthesis.getVoices();
-window.__ep = {compare, norm, store, api, generateRecap, renderRecap}; // for tests
+window.__ep = {compare, norm, store, api, generateRecap, renderRecap, speech, dlg, dlgStart, dlgStop, dlgUserTurn, dlgEndTurn}; // for tests
 })();

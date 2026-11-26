@@ -79,3 +79,17 @@ details.danger{margin-top:20px;color:var(--muted)}
 .recap .text{font-size:15px;line-height:1.7}
 .recap .lists{font-size:13px;color:var(--muted);margin-top:6px}
 .recap.current{border:2px solid var(--blue)}
+
+/* dialogue tab */
+.dlg-log{max-height:46vh;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 0}
+.bubble{max-width:86%;padding:9px 12px;border-radius:14px;font-size:16px;line-height:1.45;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.bubble.ai{align-self:flex-start;background:#fff;border-top-left-radius:4px}
+.bubble.me{align-self:flex-end;background:#dbe7ff;border-top-right-radius:4px}
+.bubble .small{margin-top:4px;padding:2px 8px;font-size:13px}
+.bubble .src{font-size:11px;color:var(--muted);margin-left:6px}
+.bubble .fix{font-size:14px;color:#14532d;margin-top:4px;border-top:1px dashed #a3b8e0;padding-top:4px}
+.dlg-live{min-height:22px;color:var(--muted);font-style:italic;text-align:center;margin-top:6px}
+.mic.busy{background:#94a3b8;box-shadow:none}
+.aiset input{margin:4px 0}
+.aiset summary{cursor:pointer;font-weight:600}
+#dlg-send{white-space:nowrap;flex:none}

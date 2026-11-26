@@ -82,6 +82,35 @@
     </div>
   </section>
 
+  <!-- ============ DIALOGUE TAB ============ -->
+  <section id="tab-dialogue" class="tab">
+    <h2>💬 对话 · 英语聊天</h2>
+    <p class="hint">点按钮开始：AI 先打招呼，念完自动开麦。你用英文说一句，<b>停顿约 1.5 秒</b>就算说完（也可以再点一下按钮马上结束这句）；AI 回你一句并念出来，念完又自动开麦。AI 说话时麦克风是关着的。点「结束对话」停止。</p>
+    <p id="dlg-note" class="warn hidden"></p>
+    <div id="dlg-log" class="dlg-log"></div>
+    <div id="dlg-live" class="dlg-live"></div>
+    <div class="micwrap">
+      <button id="dlg-mic" class="mic" aria-label="dialogue"><span>💬</span></button>
+      <div id="dlg-state" class="micstate">点我开始对话</div>
+    </div>
+    <div class="row"><button id="dlg-stop" class="ghost grow hidden">⏹ 结束对话</button></div>
+    <div class="row">
+      <input id="dlg-typed" type="text" placeholder="（也可以打字，回车发送）" autocomplete="off">
+      <button id="dlg-send" class="primary">发送</button>
+    </div>
+    <div class="row">
+      <label class="hint grow"><input type="checkbox" id="dlg-correct" checked> 顺便帮我纠错（显示更自然的说法）</label>
+      <button id="dlg-clear" class="ghost small">清空记录</button>
+    </div>
+    <details class="card aiset"><summary>AI 设置（可选，只存在这台手机上）</summary>
+      <p class="hint">填了 OpenAI（或兼容接口）的密钥，对话就由 AI 自由回复；不填就用内置回复库。密钥只保存在这台手机浏览器里，直接发给你填的接口地址。</p>
+      <input id="ai-base" type="text" placeholder="接口地址（默认 https://api.openai.com/v1）" autocomplete="off">
+      <input id="ai-model" type="text" placeholder="模型（默认 gpt-4o-mini）" autocomplete="off">
+      <input id="ai-key" type="password" placeholder="API 密钥" autocomplete="off">
+      <div class="row"><button id="ai-save" class="primary grow">保存</button><button id="ai-clear" class="ghost">删除密钥</button></div>
+    </details>
+  </section>
+
   <!-- ============ WORDS TAB ============ -->
   <section id="tab-words" class="tab">
     <h2>求词 · 中文 → 地道英文</h2>
@@ -122,6 +151,7 @@
 
 <nav class="bottom">
   <button data-tab="practice" class="active">🎙️<span>练习</span></button>
+  <button data-tab="dialogue">💬<span>对话</span></button>
   <button data-tab="words">🔤<span>求词</span></button>
   <button data-tab="progress">📈<span>进度</span></button>
   <button data-tab="recap">🗓️<span>周报</span></button>
@@ -132,6 +162,7 @@
 <script src="engine/zh_en_dict.js"></script>
 <script src="engine/analyzer.js"></script>
 <script src="recap.js"></script>
+<script src="dialogue.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
