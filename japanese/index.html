@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f3d63">
+<title>半导体会议日语 · 复述练习</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="title">半导体会议日语<small>中文说一段 → 日语复述</small></div>
+  <span id="aiPill" class="pill">检测中…</span>
+</header>
+
+<main>
+<!-- 1. input -->
+<section id="vInput" class="view active">
+  <div class="card">
+    <h2>① 用中文说一段会议发言</h2>
+    <p class="muted">例如：良率下降、原因分析、对策、交期……说完点“生成日语”。</p>
+    <button id="zhMic" class="mic">🎤 点击开始说中文</button>
+    <div id="zhInterim" class="interim"></div>
+    <textarea id="zhText" rows="6" placeholder="语音识别的文字会出现在这里，也可以直接打字或粘贴。"></textarea>
+    <div class="row">
+      <button id="btnClear" class="ghost">清空</button>
+      <button id="btnAnalyze" class="primary">生成日语 →</button>
+    </div>
+  </div>
+  <div class="card">
+    <h3>没想好说什么？用示例</h3>
+    <div id="samples" class="chips"></div>
+  </div>
+</section>
+
+<!-- 2. result -->
+<section id="vResult" class="view">
+  <div id="warn" class="warn hidden"></div>
+  <div class="card">
+    <div class="row between"><h2>② 日语会议说法</h2>
+      <div class="toggles"><label><input type="checkbox" id="tKana" checked> 假名</label><label><input type="checkbox" id="tRomaji"> 罗马音</label></div></div>
+    <div class="legend"><span class="v">蓝色 = 词汇</span><span class="g">橙色下划线 = 语法/敬语</span></div>
+    <div id="sentences"></div>
+    <div class="row"><button id="playAll" class="ghost">🔊 听整段</button><label class="rate">语速 <input type="range" id="rate" min="0.6" max="1.2" step="0.1" value="0.9"></label></div>
+    <div id="unmatched"></div>
+    <ul id="tips" class="tips"></ul>
+  </div>
+  <div class="card"><h3>📘 词汇 <span id="vCount" class="muted"></span></h3><div id="vocabList"></div></div>
+  <div class="card"><h3>📙 语法 · 敬语句型 <span id="gCount" class="muted"></span></h3><div id="grammarList"></div></div>
+  <div class="sticky"><button id="btnBack" class="ghost">← 重新说</button><button id="btnDrill" class="primary">③ 开始逐项练习</button></div>
+</section>
+
+<!-- 3. drill -->
+<section id="vDrill" class="view">
+  <div class="progressbar"><div id="dBar"></div></div>
+  <div class="card drill">
+    <div class="row between"><span id="dType" class="badge">词汇</span><span id="dPos" class="muted"></span></div>
+    <div class="cue-label">请用日语说：</div>
+    <div id="dCue" class="cue"></div>
+    <div id="dHintPattern" class="muted"></div>
+    <div id="dHint" class="hint"></div>
+    <div class="row wrap">
+      <button id="dHintBtn" class="ghost">💡 提示</button>
+      <button id="dListen" class="ghost">🔊 听标准说法</button>
+    </div>
+    <button id="dMic" class="mic ja">🎤 点击用日语说</button>
+    <div id="dInterim" class="interim"></div>
+    <div class="row"><input id="dTyped" placeholder="或用日语键盘输入后点“检查”"><button id="dCheck" class="ghost">检查</button></div>
+    <div id="dResult" class="result hidden"></div>
+    <div class="row">
+      <button id="dSkip" class="ghost">跳过</button>
+      <button id="dNext" class="primary" disabled>下一个 →</button>
+    </div>
+  </div>
+  <button id="dQuit" class="link">结束练习</button>
+</section>
+
+<!-- 4. summary -->
+<section id="vSummary" class="view">
+  <div class="card"><h2>🎉 本轮完成</h2><div id="sumBody"></div>
+    <div class="row"><button id="sumAgain" class="ghost">再练一遍这段</button><button id="sumNew" class="primary">说新的一段</button></div></div>
+</section>
+
+<!-- progress -->
+<section id="vProgress" class="view">
+  <div class="card"><h2>学习进度</h2><div id="stats" class="stats"></div>
+    <div class="row"><button id="reviewWeak" class="primary">复习未掌握的项目</button></div></div>
+  <div class="card"><h3>📘 词汇</h3><div id="pVocab"></div></div>
+  <div class="card"><h3>📙 语法</h3><div id="pGrammar"></div></div>
+  <div class="card"><h3>最近练习</h3><div id="pSessions"></div></div>
+</section>
+
+<!-- help -->
+<section id="vHelp" class="view">
+  <div class="card"><h2>使用说明</h2>
+    <ol>
+      <li>用 <b>安卓 Chrome</b> 打开本页面；第一次点麦克风时允许录音。</li>
+      <li>点 🎤 用中文说一段会议发言，或直接打字。</li>
+      <li>点“生成日语”，看日语说法：蓝色是词汇，橙色下划线是语法/敬语。点 🔊 听发音。</li>
+      <li>“开始逐项练习”：看中文提示，用日语说出来；绿色=说对，红色=漏掉/说错。达到 85% 算通过，没过可以一直重来。</li>
+      <li>最后整段复述一次。进度会自动保存在本机，并同步一份到服务器，便于以后出周报。</li>
+    </ol>
+    <p class="muted">听不到声音：在系统设置 → 文字转语音 中安装“日语”语音包（Google 语音服务）。<br>麦克风没反应：确认网址是 https 开头，并在 Chrome 网站设置里允许麦克风。</p>
+    <div id="helpStatus" class="muted"></div>
+  </div>
+  <div class="card"><h3>AI 设置（可选，只存在这台手机上）</h3>
+    <p class="muted">服务器没配 AI 时，可以在这里填一个 OpenAI 兼容接口的密钥，任意中文都能翻译。不填就用内置的半导体会议短语库。</p>
+    <input id="aiBase" type="text" placeholder="接口地址，如 https://api.openai.com/v1">
+    <input id="aiModel" type="text" placeholder="模型，如 gpt-4o-mini" style="margin-top:8px">
+    <input id="aiKey" type="password" placeholder="API 密钥" style="margin-top:8px;width:100%;border:1px solid #cfd6df;border-radius:10px;padding:10px;font-size:16px">
+    <div class="row"><button id="aiClear" class="ghost">清除</button><button id="aiSave" class="primary">保存</button></div>
+    <button id="resetAll" class="link danger">清除本机练习记录</button>
+  </div>
+</section>
+</main>
+
+<nav>
+  <button data-v="vInput" class="on">练习</button>
+  <button data-v="vProgress">进度</button>
+  <button data-v="vHelp">说明</button>
+</nav>
+<div id="toast" class="toast hidden"></div>
+<script src="engine.js"></script>
+<script src="kana.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

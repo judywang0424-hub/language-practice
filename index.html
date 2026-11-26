@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1d4f91">
+<title>语言陪练</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+    background: linear-gradient(180deg, #eef4ff 0%, #f7f8fb 40%, #fff 100%);
+    color: #1a2433;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 20px 48px;
+  }
+  .wrap { width: 100%; max-width: 420px; }
+  h1 { font-size: 1.6rem; margin: 0 0 6px; letter-spacing: 0.02em; }
+  p.sub { margin: 0 0 28px; color: #5b6778; font-size: 0.98rem; line-height: 1.5; }
+  a.card {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+    background: #fff;
+    border: 1px solid #d7e0ee;
+    border-radius: 18px;
+    padding: 22px 20px;
+    margin: 0 0 14px;
+    box-shadow: 0 8px 24px rgba(29, 79, 145, 0.08);
+    transition: transform .12s ease, box-shadow .12s ease;
+  }
+  a.card:active { transform: scale(0.98); }
+  a.card .kicker { font-size: 0.82rem; color: #2f6fed; font-weight: 600; margin-bottom: 4px; }
+  a.card .title { font-size: 1.28rem; font-weight: 700; }
+  a.card .desc { margin-top: 6px; color: #5b6778; font-size: 0.92rem; line-height: 1.45; }
+  a.card.ja .kicker { color: #0f3d63; }
+  footer { margin-top: 22px; color: #8a93a0; font-size: 0.82rem; text-align: center; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>语言陪练</h1>
+    <p class="sub">选一个练习打开。请用手机 Chrome，并允许使用麦克风。</p>
+    <a class="card" href="english/">
+      <div class="kicker">English Practice</div>
+      <div class="title">英语练习</div>
+      <div class="desc">说一段英文，逐句反馈，跟读对比，还能看每周复习。</div>
+    </a>
+    <a class="card ja" href="japanese/">
+      <div class="kicker">半導体会議</div>
+      <div class="title">日语半导体会议练习</div>
+      <div class="desc">用中文说一段会议内容，生成日语复述，再逐项练习词汇和语法。</div>
+    </a>
+    <footer>打开后请允许麦克风。建议用 HTTPS 下的 Chrome。</footer>
+  </div>
+</body>
+</html>

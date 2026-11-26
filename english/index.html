@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2f6fed">
+<title>English Practice · 英语口语陪练</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">🗣️ English Practice <small>口语陪练</small></div>
+  <div id="engine" class="engine"></div>
+</header>
+
+<main>
+  <!-- ============ PRACTICE TAB ============ -->
+  <section id="tab-practice" class="tab active">
+    <!-- step 1: speak -->
+    <div id="step-speak" class="step">
+      <h2>① 说一段英文</h2>
+      <p class="hint">点麦克风，用英文说一段话（不会的词可以直接说中文/打中文）。说完再点一次停止，可以手动修改文字。</p>
+      <div class="micwrap">
+        <button id="mic-passage" class="mic" aria-label="record"><span>🎤</span></button>
+        <div id="mic-passage-state" class="micstate">点我开始说</div>
+      </div>
+      <textarea id="passage" rows="6" placeholder="识别的文字会出现在这里，也可以直接打字……&#10;e.g. Yesterday I go to the supermarket and buy many apple."></textarea>
+      <div class="row">
+        <button id="btn-sample" class="ghost">示例</button>
+        <button id="btn-clear" class="ghost">清空</button>
+        <button id="btn-analyze" class="primary grow">分析这段话 →</button>
+      </div>
+      <p id="sr-warning" class="warn hidden"></p>
+    </div>
+
+    <!-- step 2: feedback -->
+    <div id="step-feedback" class="step hidden">
+      <h2>② 逐句反馈</h2>
+      <div id="fb-summary" class="summary"></div>
+      <div id="fb-list"></div>
+      <div class="row sticky-actions">
+        <button id="btn-back-speak" class="ghost">← 重新说</button>
+        <button id="btn-start-drill" class="primary grow">开始跟读练习 →</button>
+      </div>
+    </div>
+
+    <!-- step 3: drill -->
+    <div id="step-drill" class="step hidden">
+      <h2>③ 跟读练到过关</h2>
+      <div id="drill-progress" class="drill-progress"></div>
+      <div class="card target-card">
+        <div class="label-row"><span id="drill-mode" class="pill"></span><button id="btn-listen" class="ghost small">🔊 听一遍</button></div>
+        <div id="drill-target" class="target"></div>
+        <button id="btn-peek" class="ghost small hidden">👀 偷看一下</button>
+        <div id="drill-keys" class="keys"></div>
+      </div>
+      <div class="micwrap">
+        <button id="mic-drill" class="mic"><span>🎤</span></button>
+        <div id="mic-drill-state" class="micstate">点我跟读</div>
+      </div>
+      <input id="drill-typed" type="text" placeholder="（没麦克风时可以打字）" autocomplete="off">
+      <div id="drill-result" class="result"></div>
+      <div class="row">
+        <button id="btn-skip" class="ghost">跳过</button>
+        <button id="btn-check" class="primary grow">对比 ✓</button>
+        <button id="btn-next" class="primary grow hidden">下一句 →</button>
+      </div>
+    </div>
+
+    <!-- step 4: done -->
+    <div id="step-done" class="step hidden">
+      <h2>🎉 这一段练完了</h2>
+      <div id="done-summary" class="summary"></div>
+      <div class="card"><div class="label">整段地道版本</div><div id="done-passage" class="target small-target"></div>
+        <button id="btn-listen-all" class="ghost small">🔊 听整段</button></div>
+      <div class="row">
+        <button id="btn-new" class="primary grow">再说一段</button>
+        <button id="btn-to-progress" class="ghost">看进度</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ WORDS TAB ============ -->
+  <section id="tab-words" class="tab">
+    <h2>求词 · 中文 → 地道英文</h2>
+    <p class="hint">不会说的词，用中文说或打出来（中英混着说也行），我给你地道的英文说法，可以一键加入练习。</p>
+    <div class="micwrap">
+      <button id="mic-words" class="mic zh"><span>🎤</span></button>
+      <div id="mic-words-state" class="micstate">点我说中文</div>
+    </div>
+    <div class="row">
+      <input id="words-input" type="text" placeholder="例如：加班 / 我想点外卖 / 摸鱼" autocomplete="off">
+      <button id="btn-suggest" class="primary">查</button>
+    </div>
+    <div id="words-list"></div>
+  </section>
+
+  <!-- ============ PROGRESS TAB ============ -->
+  <section id="tab-progress" class="tab">
+    <h2>我的进度</h2>
+    <div id="stats" class="stats"></div>
+    <div class="row">
+      <button id="btn-review" class="primary grow">复习最薄弱的 5 个点</button>
+    </div>
+    <div id="points"></div>
+    <details class="danger"><summary>数据</summary>
+      <p class="hint">进度只保存在这台手机的浏览器里。</p>
+      <button id="btn-export" class="ghost small">导出 JSON</button>
+      <button id="btn-reset" class="ghost small">清空进度</button>
+    </details>
+  </section>
+  <!-- ============ RECAP TAB ============ -->
+  <section id="tab-recap" class="tab">
+    <h2>周报 · 每周回顾</h2>
+    <p class="hint">按自然周（周一到周日）汇总：学了哪些词、练了哪些语法、哪些问题反复出现、哪些明显进步了。</p>
+    <div class="row"><button id="btn-recap-now" class="primary grow">现在生成本周周报</button></div>
+    <div id="recap-list"></div>
+  </section>
+</main>
+
+<nav class="bottom">
+  <button data-tab="practice" class="active">🎙️<span>练习</span></button>
+  <button data-tab="words">🔤<span>求词</span></button>
+  <button data-tab="progress">📈<span>进度</span></button>
+  <button data-tab="recap">🗓️<span>周报</span></button>
+</nav>
+<div id="toast" class="toast"></div>
+<script src="config.js"></script>
+<script src="engine/rules_data.js"></script>
+<script src="engine/zh_en_dict.js"></script>
+<script src="engine/analyzer.js"></script>
+<script src="recap.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
